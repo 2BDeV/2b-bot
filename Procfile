@@ -1,1 +1,1 @@
-worker: python dc_bot.py
+web: python dc_bot.py

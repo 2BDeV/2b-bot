@@ -22,7 +22,7 @@ URL = os.getenv("URL")
 BACKUP_URL = os.getenv("BACKUP_URL")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))
 TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "5"))
-BASE_URL = os.getenv("BASE_URL", "2bbot-heroku.2bdevon.top").rstrip("/")
+BASE_URL = os.getenv("BASE_URL", "https://2bbot-heroku.2bdevon.top").rstrip("/")
 
 if not all([TOKEN, CHANNEL_ID, GUILD_ID, URL, BACKUP_URL]):
     raise ValueError("Missing required environment variables")
@@ -30,7 +30,8 @@ if not all([TOKEN, CHANNEL_ID, GUILD_ID, URL, BACKUP_URL]):
 app = Flask(__name__)
 
 def run_flask():
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    port = int(os.getenv("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port, debug=False)
 
 games = {}
 games_lock = threading.Lock()
@@ -307,27 +308,30 @@ async def on_ready():
         monitor_websites.start()
 
 def console_handler():
-    while True:
-        cmd = input("Command (reload / reset / restart / stop): ").strip().lower()
-        if cmd == "reload":
-            async def reload_commands():
-                try:
+    try:
+        while True:
+            cmd = input("Command (reload / reset / restart / stop): ").strip().lower()
+            if cmd == "reload":
+                async def reload_commands():
+                    try:
+                        synced = await bot.tree.sync()
+                        print(f"Reloaded {len(synced)} commands.")
+                    except Exception as e:
+                        print(f"Reload failed: {e}")
+                asyncio.run_coroutine_threadsafe(reload_commands(), bot.loop)
+            elif cmd == "reset":
+                async def reset_commands():
+                    for command in bot.tree.get_commands():
+                        bot.tree.remove_command(command.name)
                     synced = await bot.tree.sync()
-                    print(f"Reloaded {len(synced)} commands.")
-                except Exception as e:
-                    print(f"Reload failed: {e}")
-            asyncio.run_coroutine_threadsafe(reload_commands(), bot.loop)
-        elif cmd == "reset":
-            async def reset_commands():
-                for cmd in bot.tree.get_commands():
-                    bot.tree.remove_command(cmd.name)
-                synced = await bot.tree.sync()
-                print(f"Synced {len(synced)} commands")
-            asyncio.run_coroutine_threadsafe(reset_commands(), bot.loop)
-        elif cmd == "restart":
-            os.execv(sys.executable, ["python"] + sys.argv)
-        elif cmd == "stop":
-            os.kill(os.getpid(), signal.SIGINT)
+                    print(f"Synced {len(synced)} commands")
+                asyncio.run_coroutine_threadsafe(reset_commands(), bot.loop)
+            elif cmd == "restart":
+                os.execv(sys.executable, ["python"] + sys.argv)
+            elif cmd == "stop":
+                os.kill(os.getpid(), signal.SIGINT)
+    except (EOFError, OSError):
+        print("Nincs interaktív konzol; a konzolparancsok letiltva.")
 
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
