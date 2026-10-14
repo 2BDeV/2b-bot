@@ -22,7 +22,7 @@ URL = os.getenv("URL")
 BACKUP_URL = os.getenv("BACKUP_URL")
 CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", "60"))
 TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "5"))
-BASE_URL = os.getenv("BASE_URL", "http://localhost:5000").rstrip("/")
+BASE_URL = os.getenv("BASE_URL", "2bbot-heroku.2bdevon.top").rstrip("/")
 
 if not all([TOKEN, CHANNEL_ID, GUILD_ID, URL, BACKUP_URL]):
     raise ValueError("Missing required environment variables")
