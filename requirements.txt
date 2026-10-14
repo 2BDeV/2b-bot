@@ -2,3 +2,4 @@ discord.py
 aiohttp
 Flask
 python-dotenv
+python-chess
