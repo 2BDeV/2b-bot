@@ -87,7 +87,7 @@ def create_game(mode, creator_id, creator_name, opp_id=None, opp_name=None, crea
     if mode == "bot":
         players[other] = {"token": None, "name": "Bot", "id": None, "joined": True}
     else:
-        players[other] = {"token": secrets.token_urlsafe(10), "name": opp_name, "id": opp_id, "joined": False}
+        players[other] = {"token": secrets.token_urlsafe(10), "name": "Nyitott hely", "id": None, "joined": False}
     game = {"id": gid, "mode": mode, "board": chess.Board(), "players": players, "resigned": None, "last_move": None}
     with games_lock:
         games[gid] = game
@@ -214,21 +214,34 @@ async def check_website(target_url):
         return False, None
 
 class JoinView(discord.ui.View):
-    def __init__(self, game, opponent_id):
+    def __init__(self, game):
         super().__init__(timeout=3600)
         self.game = game
-        self.opponent_id = opponent_id
 
     @discord.ui.button(label="Csatlakozás a játékhoz", style=discord.ButtonStyle.success, emoji="♟️")
     async def join(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.opponent_id:
-            await interaction.response.send_message("Ez a meghívás nem neked szól.", ephemeral=True)
+        open_color = None
+        for color, player in self.game["players"].items():
+            if player["id"] is None and not player["joined"]:
+                open_color = color
+                break
+        if open_color is None:
+            await interaction.response.send_message("Ebben a játékban már van két játékos.", ephemeral=True)
             return
-        color = next(c for c, p in self.game["players"].items() if p["id"] == interaction.user.id)
-        await interaction.response.send_message(f"Itt a linked: {game_link(self.game, color)}\nTe {'világos' if color == 'white' else 'sötét'} vagy.", ephemeral=True)
+        if any(player["id"] == interaction.user.id for player in self.game["players"].values()):
+            await interaction.response.send_message("Te már részt veszel ebben a játékban.", ephemeral=True)
+            return
+        self.game["players"][open_color]["id"] = interaction.user.id
+        self.game["players"][open_color]["name"] = interaction.user.display_name
+        link = game_link(self.game, open_color)
+        await interaction.response.send_message(f"Csatlakoztál a játékhoz!\nTe {'világos' if open_color == 'white' else 'sötét'} vagy.\n{link}", ephemeral=True)
+        try:
+            await interaction.user.send(f"Csatlakoztál egy sakkjátékhoz!\nTe {'világos' if open_color == 'white' else 'sötét'} vagy.\n{link}")
+        except discord.Forbidden:
+            pass
 
 @bot.tree.command(name="chess", description="Sakkjáték indítása böngészőben")
-@app_commands.describe(mode="Játékmód", opponent="Ellenfél (1v1 módnál)", color="Szín")
+@app_commands.describe(mode="Játékmód", opponent="Nem kötelező: ha megadod, a bot DM-ben is elküldi neki a linket", color="Szín")
 @app_commands.choices(mode=[app_commands.Choice(name="Ember vs Bot", value="bot"), app_commands.Choice(name="Ember vs Ember (1v1)", value="pvp")], color=[app_commands.Choice(name="Világos", value="white"), app_commands.Choice(name="Sötét", value="black"), app_commands.Choice(name="Véletlen", value="random")])
 async def chess_command(interaction: discord.Interaction, mode: app_commands.Choice[str], opponent: discord.Member = None, color: app_commands.Choice[str] = None):
     color_value = color.value if color else "random"
@@ -237,16 +250,20 @@ async def chess_command(interaction: discord.Interaction, mode: app_commands.Cho
         my_color = next(c for c, p in game["players"].items() if p["id"] == interaction.user.id)
         await interaction.response.send_message(f"Ember vs Bot játék kész!\nTe {'világos' if my_color == 'white' else 'sötét'} vagy.\n{game_link(game, my_color)}", ephemeral=True)
         return
-    if opponent is None:
-        await interaction.response.send_message("1v1 módnál add meg az ellenfelet!", ephemeral=True)
-        return
-    if opponent.bot or opponent.id == interaction.user.id:
-        await interaction.response.send_message("Válassz egy másik, nem bot felhasználót!", ephemeral=True)
-        return
-    game = create_game("pvp", interaction.user.id, interaction.user.display_name, opponent.id, opponent.display_name, color_value)
+    game = create_game("pvp", interaction.user.id, interaction.user.display_name, None, None, color_value)
     my_color = next(c for c, p in game["players"].items() if p["id"] == interaction.user.id)
-    await interaction.response.send_message(f"{opponent.mention}, {interaction.user.display_name} sakkozni hív! A játék akkor indul, ha mindketten megnyitjátok a linketeket.", view=JoinView(game, opponent.id))
+    await interaction.response.send_message(f"{interaction.user.display_name} nyitott 1v1 sakkjátékot indított! Aki először rákattint a gombra, az lesz az ellenfél.", view=JoinView(game))
     await interaction.followup.send(f"Te {'világos' if my_color == 'white' else 'sötét'} vagy.\n{game_link(game, my_color)}", ephemeral=True)
+    if opponent:
+        if opponent.bot or opponent.id == interaction.user.id:
+            await interaction.followup.send("A megadott ellenfél érvénytelen, de a játék nyitott, így bárki csatlakozhat.", ephemeral=True)
+            return
+        try:
+            other_color = "black" if my_color == "white" else "white"
+            await opponent.send(f"{interaction.user.display_name} sakkjátékra hív!\nTe {'világos' if other_color == 'white' else 'sötét'} vagy.\n{game_link(game, other_color)}")
+            await interaction.followup.send(f"Elküldtem a linket {opponent.mention} felhasználónak DM-ben.", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.followup.send(f"Nem tudok DM-et küldeni {opponent.mention} felhasználónak, de a nyitott gombbal csatlakozhat.", ephemeral=True)
 
 @bot.tree.command(name="ping", description="Check website status")
 async def ping_command(interaction: discord.Interaction):
