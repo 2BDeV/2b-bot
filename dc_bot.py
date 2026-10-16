@@ -76,7 +76,7 @@ def best_bot_move(board, depth=3):
         alpha = max(alpha, score)
     return best_move
 
-def create_game(mode, creator_id, creator_name, opp_id=None, opp_name=None, creator_color="random"):
+def create_game(mode, creator_id, creator_name, opp_id=None, opp_name=None, creator_color="random", difficulty=3):
     if creator_color == "random":
         creator_color = random.choice(["white", "black"])
     other = "black" if creator_color == "white" else "white"
@@ -88,11 +88,11 @@ def create_game(mode, creator_id, creator_name, opp_id=None, opp_name=None, crea
         players[other] = {"token": None, "name": "Bot", "id": None, "joined": True}
     else:
         players[other] = {"token": secrets.token_urlsafe(10), "name": "Nyitott hely", "id": None, "joined": False}
-    game = {"id": gid, "mode": mode, "board": chess.Board(), "players": players, "resigned": None, "last_move": None}
+    game = {"id": gid, "mode": mode, "board": chess.Board(), "players": players, "resigned": None, "last_move": None, "difficulty": difficulty}
     with games_lock:
         games[gid] = game
         if mode == "bot" and other == "white":
-            move = best_bot_move(game["board"])
+            move = best_bot_move(game["board"], difficulty)
             game["last_move"] = move.uci()
             game["board"].push(move)
     return game
@@ -104,7 +104,10 @@ def color_of(game, token):
     return None
 
 def game_link(game, color):
-    return f"{BASE_URL}/chess/{game['id']}?t={game['players'][color]['token']}"
+    base = BASE_URL
+    if not base.startswith("http://") and not base.startswith("https://"):
+        base = "https://" + base
+    return f"{base}/chess/{game['id']}?t={game['players'][color]['token']}"
 
 def build_state(game, my_color):
     board = game["board"]
@@ -179,7 +182,7 @@ def chess_move(gid):
         board.push(move)
         game["last_move"] = move.uci()
         if game["mode"] == "bot" and not board.is_game_over():
-            bot_move = best_bot_move(board)
+            bot_move = best_bot_move(board, game["difficulty"])
             board.push(bot_move)
             game["last_move"] = bot_move.uci()
         return jsonify(build_state(game, color))
@@ -241,16 +244,17 @@ class JoinView(discord.ui.View):
             pass
 
 @bot.tree.command(name="chess", description="Sakkjáték indítása böngészőben")
-@app_commands.describe(mode="Játékmód", opponent="Nem kötelező: ha megadod, a bot DM-ben is elküldi neki a linket", color="Szín")
-@app_commands.choices(mode=[app_commands.Choice(name="Ember vs Bot", value="bot"), app_commands.Choice(name="Ember vs Ember (1v1)", value="pvp")], color=[app_commands.Choice(name="Világos", value="white"), app_commands.Choice(name="Sötét", value="black"), app_commands.Choice(name="Véletlen", value="random")])
-async def chess_command(interaction: discord.Interaction, mode: app_commands.Choice[str], opponent: discord.Member = None, color: app_commands.Choice[str] = None):
+@app_commands.describe(mode="Játékmód", opponent="Nem kötelező: ha megadod, a bot DM-ben is elküldi neki a linket", color="Szín", difficulty="Bot nehézsége (1-5)")
+@app_commands.choices(mode=[app_commands.Choice(name="Ember vs Bot", value="bot"), app_commands.Choice(name="Ember vs Ember (1v1)", value="pvp")], color=[app_commands.Choice(name="Világos", value="white"), app_commands.Choice(name="Sötét", value="black"), app_commands.Choice(name="Véletlen", value="random")], difficulty=[app_commands.Choice(name="1 - Nagyon könnyű", value=1), app_commands.Choice(name="2 - Könnyű", value=2), app_commands.Choice(name="3 - Közepes", value=3), app_commands.Choice(name="4 - Nehéz", value=4), app_commands.Choice(name="5 - Nagyon nehéz", value=5)])
+async def chess_command(interaction: discord.Interaction, mode: app_commands.Choice[str], opponent: discord.Member = None, color: app_commands.Choice[str] = None, difficulty: app_commands.Choice[int] = None):
     color_value = color.value if color else "random"
+    difficulty_value = difficulty.value if difficulty else 3
     if mode.value == "bot":
-        game = await asyncio.to_thread(create_game, "bot", interaction.user.id, interaction.user.display_name, None, None, color_value)
+        game = await asyncio.to_thread(create_game, "bot", interaction.user.id, interaction.user.display_name, None, None, color_value, difficulty_value)
         my_color = next(c for c, p in game["players"].items() if p["id"] == interaction.user.id)
-        await interaction.response.send_message(f"Ember vs Bot játék kész!\nTe {'világos' if my_color == 'white' else 'sötét'} vagy.\n{game_link(game, my_color)}", ephemeral=True)
+        await interaction.response.send_message(f"Ember vs Bot játék kész!\nNehézség: {difficulty_value}/5\nTe {'világos' if my_color == 'white' else 'sötét'} vagy.\n{game_link(game, my_color)}", ephemeral=True)
         return
-    game = create_game("pvp", interaction.user.id, interaction.user.display_name, None, None, color_value)
+    game = create_game("pvp", interaction.user.id, interaction.user.display_name, None, None, color_value, difficulty_value)
     my_color = next(c for c, p in game["players"].items() if p["id"] == interaction.user.id)
     await interaction.response.send_message(f"{interaction.user.display_name} nyitott 1v1 sakkjátékot indított! Aki először rákattint a gombra, az lesz az ellenfél.", view=JoinView(game))
     await interaction.followup.send(f"Te {'világos' if my_color == 'white' else 'sötét'} vagy.\n{game_link(game, my_color)}", ephemeral=True)
