@@ -48,6 +48,10 @@ def install_console(app, bot, base_url, control):
             counter += 1
             lines.append((counter, text[:8192]))
 
+    def log(text):
+        print(text, flush=True)
+        append(text + '\n')
+
     class Tee:
         def __init__(self, original):
             self.original = original
@@ -108,24 +112,24 @@ def install_console(app, bot, base_url, control):
             verified = user.get('email_verified', claims.get('email_verified', False))
             if isinstance(verified, str):
                 verified = verified.strip().lower() == 'true'
-            append(f'\n[Konzol] Google-válasz: email={email!r}, email_verified={verified!r}, engedélyezett={email in allowed}\n')
+            log(f"[Konzol] Google-válasz: email={email!r}, email_verified={verified!r}, engedélyezett={email in allowed}, engedélyezési_lista={sorted(allowed)!r}")
         except Exception as exc:
             session.clear()
-            append(f'\n[Konzolhiba] Google-hitelesítés: {type(exc).__name__}: {exc}\n')
+            log(f'[Konzolhiba] Google-hitelesítés: {type(exc).__name__}: {exc}')
             abort(401, 'Sikertelen Google-hitelesítés.')
         if not email:
             session.clear()
             abort(401, 'A Google nem küldött e-mail-címet.')
         if verified is not True:
             session.clear()
-            abort(403, 'A Google-fiók e-mail-címe nincs hitelesítve.')
+            abort(403, f'A Google-fiók e-mail-címe nincs hitelesítve. email={email!r}, email_verified={verified!r}')
         if email not in allowed:
             session.clear()
-            abort(403, 'Ez a Google-fiók nincs engedélyezve.')
+            abort(403, f'Ez a Google-fiók nincs engedélyezve. Kapott cím: {email!r}; engedélyezett: {sorted(allowed)!r}')
         session.clear()
         session.permanent = True
         session.update(email=email, login_at=time.time(), csrf=secrets.token_urlsafe(32))
-        append(f'\n[Konzol] Bejelentkezés: {email}\n')
+        log(f'[Konzol] Bejelentkezés: {email}')
         return redirect('/console')
 
     @app.get('/console')
@@ -143,10 +147,10 @@ def install_console(app, bot, base_url, control):
 
     def execute(command, email):
         try:
-            append(f'\n[{email}] $ {command}\n')
+            log(f'[{email}] $ {command}')
             if command in (':reload', ':reset', ':restart', ':stop'):
                 control(command[1:])
-                append('[Konzol] Vezérlőparancs elküldve.\n')
+                log('[Konzol] Vezérlőparancs elküldve.')
                 return
             process = subprocess.Popen(command, shell=True, executable='/bin/sh', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
             def read():
