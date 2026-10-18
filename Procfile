@@ -1,1 +1,1 @@
-web: python dc_bot.py
+web: python console_launcher.py
