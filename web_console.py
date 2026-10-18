@@ -35,7 +35,7 @@ def install_console(app, bot, base_url, control):
     enabled = all(os.getenv(key) for key in required)
     if enabled and (urlsplit(base_url).scheme != 'https' or len(os.environ['CONSOLE_SESSION_SECRET']) < 32):
         raise ValueError('A konzolhoz HTTPS BASE_URL és legalább 32 karakteres CONSOLE_SESSION_SECRET szükséges.')
-    allowed = {x.strip().lower() for x in os.getenv('CONSOLE_ALLOWED_EMAILS', 'benedek.balint.kiss@gmail.com').split(',') if x.strip()}
+    allowed = {x.strip().strip('<>').lower() for x in os.getenv('CONSOLE_ALLOWED_EMAILS', 'benedek.balint.kiss@gmail.com').split(',') if x.strip()}
     app.config.update(SECRET_KEY=os.getenv('CONSOLE_SESSION_SECRET') or secrets.token_hex(32), SESSION_COOKIE_NAME='__Host-2bconsole', SESSION_COOKIE_SECURE=True, SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax', SESSION_COOKIE_PATH='/', PERMANENT_SESSION_LIFETIME=timedelta(minutes=30))
     oauth = OAuth(app)
     google = oauth.register(name='google', client_id=os.getenv('GOOGLE_CLIENT_ID'), client_secret=os.getenv('GOOGLE_CLIENT_SECRET'), server_metadata_url='https://accounts.google.com/.well-known/openid-configuration', client_kwargs={'scope': 'openid email profile', 'code_challenge_method': 'S256'})
@@ -102,12 +102,24 @@ def install_console(app, bot, base_url, control):
     def console_callback():
         try:
             token = google.authorize_access_token()
-            user = token['userinfo']
-        except Exception:
+            user = token.get('userinfo') or {}
+            claims = token.get('id_token_claims') or {}
+            email = str(user.get('email') or claims.get('email') or '').strip().strip('<>').lower()
+            verified = user.get('email_verified', claims.get('email_verified', False))
+            if isinstance(verified, str):
+                verified = verified.strip().lower() == 'true'
+            append(f'\n[Konzol] Google-válasz: email={email!r}, email_verified={verified!r}, engedélyezett={email in allowed}\n')
+        except Exception as exc:
             session.clear()
+            append(f'\n[Konzolhiba] Google-hitelesítés: {type(exc).__name__}: {exc}\n')
             abort(401, 'Sikertelen Google-hitelesítés.')
-        email = str(user.get('email', '')).lower()
-        if user.get('email_verified') is not True or email not in allowed:
+        if not email:
+            session.clear()
+            abort(401, 'A Google nem küldött e-mail-címet.')
+        if verified is not True:
+            session.clear()
+            abort(403, 'A Google-fiók e-mail-címe nincs hitelesítve.')
+        if email not in allowed:
             session.clear()
             abort(403, 'Ez a Google-fiók nincs engedélyezve.')
         session.clear()
