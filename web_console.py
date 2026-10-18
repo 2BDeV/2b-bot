@@ -119,13 +119,15 @@ def install_console(app, bot, base_url, control):
             abort(401, 'Sikertelen Google-hitelesítés.')
         if not email:
             session.clear()
-            abort(401, 'A Google nem küldött e-mail-címet.')
+            abort(401, 'Sikertelen Google-hitelesítés.')
         if verified is not True:
             session.clear()
-            abort(403, f'A Google-fiók e-mail-címe nincs hitelesítve. email={email!r}, email_verified={verified!r}')
+            log(f'[Konzol] Elutasítva: email={email!r}, email_verified={verified!r}')
+            abort(403, 'Ez a Google-fiók nincs engedélyezve.')
         if email not in allowed:
             session.clear()
-            abort(403, f'Ez a Google-fiók nincs engedélyezve. Kapott cím: {email!r}; engedélyezett: {sorted(allowed)!r}')
+            log(f'[Konzol] Elutasítva: email={email!r}, engedélyezett=False')
+            abort(403, 'Ez a Google-fiók nincs engedélyezve.')
         session.clear()
         session.permanent = True
         session.update(email=email, login_at=time.time(), csrf=secrets.token_urlsafe(32))
