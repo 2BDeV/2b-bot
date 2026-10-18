@@ -147,7 +147,7 @@ def install_spotify(app, bot, base_url):
         data, age = snapshot()
         payload = dict(fallback)
         if data and data.get('is_playing'):
-            payload['activity'] = discord.Activity(type=discord.ActivityType.listening, name=f'{version} | Spotify')
+            payload['activity'] = discord.Activity(type=discord.ActivityType.listening, name=f'{version} | Spotify | /nowplaying')
         activity = payload.get('activity')
         key = (repr(activity.to_dict()) if activity else None, str(payload.get('status')), payload.get('afk', False))
         if key != last_presence:
