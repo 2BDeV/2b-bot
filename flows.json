@@ -1,0 +1,13 @@
+{
+  "main": {
+    "triggers": [":hi"],
+    "start": "n1",
+    "nodes": {
+      "n1": {"type": "question", "text": "Szia! Milyen nyelven folytassuk?", "x": 60, "y": 60, "options": {"magyar": "n2", "english": "n3"}},
+      "n2": {"type": "question", "text": "Miben segíthetek?", "x": 380, "y": 60, "options": {"weboldal": "n4", "discord": "n4", "egyéb": "n4"}},
+      "n3": {"type": "question", "text": "How can I help?", "x": 380, "y": 260, "options": {"website": "n5", "discord": "n5", "other": "n5"}},
+      "n4": {"type": "end", "text": "Köszi, hamarosan válaszolok! 🙂", "x": 700, "y": 60},
+      "n5": {"type": "end", "text": "Thanks, I will reply soon! 🙂", "x": 700, "y": 260}
+    }
+  }
+}
